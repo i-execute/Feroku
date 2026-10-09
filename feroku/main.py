@@ -440,7 +440,7 @@ class Feroku:
             return False
 
     def _install_daemon(self) -> bool:
-        executable = str(Path(sys.executable).resolve())
+        executable = os.path.abspath(sys.executable)
         repository = str(BASE_PATH.resolve())
         is_root = hasattr(os, "geteuid") and os.geteuid() == 0
         user_unit = not is_root
@@ -458,8 +458,8 @@ class Feroku:
             "Wants=network-online.target\n\n"
             "[Service]\n"
             "Type=simple\n"
-            f"WorkingDirectory={repository}\n"
-            f"ExecStart={executable} -m feroku\n"
+            f"WorkingDirectory={self._systemd_quote(repository)}\n"
+            f"ExecStart={self._systemd_quote(executable)} -m feroku\n"
             "Restart=always\n"
             "RestartSec=5\n"
             "Environment=PYTHONUNBUFFERED=1\n\n"

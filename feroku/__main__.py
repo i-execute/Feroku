@@ -13,6 +13,10 @@ from pathlib import Path
 
 from ._internal import restart
 
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+REQUIREMENTS_PATH = PROJECT_ROOT / "Storage" / "requirements.txt"
+REQUIREMENTS_HASH_PATH = PROJECT_ROOT / ".requirements_hash"
+
 def get_data_root():
     for index, arg in enumerate(sys.argv):
         if arg == "--data-root" and index + 1 < len(sys.argv):
@@ -21,11 +25,7 @@ def get_data_root():
         if arg.startswith("--data-root="):
             return Path(arg.split("=", maxsplit=1)[1]).expanduser()
 
-    return Path(
-        "/data"
-        if "DOCKER" in os.environ
-        else os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
-    )
+    return Path("/data") if "DOCKER" in os.environ else PROJECT_ROOT
 
 def wipe_data():
     if not {"-w", "--wipe"} & set(sys.argv):
@@ -92,14 +92,13 @@ def deps():
             "--disable-pip-version-check",
             "--no-warn-script-location",
             "-r",
-            "Storage/requirements.txt",
+            str(REQUIREMENTS_PATH),
         ],
         check=True,
         timeout=600,
-        capture_output=True,
+        cwd=PROJECT_ROOT,
     )
-    with open(".requirements_hash", "w") as f:
-        f.write(get_file_hash("Storage/requirements.txt"))
+    REQUIREMENTS_HASH_PATH.write_text(get_file_hash(REQUIREMENTS_PATH))
 
 if sys.version_info < (3, 10, 0):
     print("Error: you must use at least Python version 3.10.0")
@@ -134,12 +133,14 @@ else:
         deps()
         restart()
 
-    prev_hash = None
-    if os.path.exists(".requirements_hash"):
-        with open(".requirements_hash") as f:
-            prev_hash = f.read().strip()
+    current_hash = get_file_hash(REQUIREMENTS_PATH)
+    if REQUIREMENTS_HASH_PATH.exists():
+        prev_hash = REQUIREMENTS_HASH_PATH.read_text().strip()
+    else:
+        prev_hash = current_hash
+        REQUIREMENTS_HASH_PATH.write_text(current_hash)
 
-    if prev_hash != get_file_hash("Storage/requirements.txt"):
+    if prev_hash != current_hash:
         print(
             "Detected changes in requirements.txt, updating dependencies..."
         )
