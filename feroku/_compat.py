@@ -1,11 +1,6 @@
 # CopyLeft 2026 github.com/i-execute // i_execute.t.me
 # Licensed under AGPLv3.
 
-# (c) Dan Gazizullin, 2021-2023. This file is part of the Hikka Userbot: github.com/hikariatama/Hikka
-
-
-
-
 import importlib
 import inspect
 import logging
@@ -14,7 +9,6 @@ import re
 import shutil
 import sys
 import types
-
 
 def redirect_import(name: str) -> str:
     if name == "heroku" or name.startswith("heroku."):

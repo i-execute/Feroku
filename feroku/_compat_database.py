@@ -1,3 +1,6 @@
+# CopyLeft 2026 github.com/i-execute // i_execute.t.me
+# Licensed under AGPLv3.
+
 def migrate_database_items(value):
     if not isinstance(value, dict):
         return value

@@ -1,3 +1,6 @@
+# CopyLeft 2026 github.com/i-execute // i_execute.t.me
+# Licensed under AGPLv3.
+
 from telethon.tl.types import Message
 
 from .. import loader, main, utils
