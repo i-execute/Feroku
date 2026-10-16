@@ -53,13 +53,19 @@ async def _delete_inline_messages(client, bot: BotPM):
     except Exception:
         logger.debug("Failed to load registration input messages", exc_info=True)
         return
-    message_ids = [
-        message.id
-        for message in messages
-        if getattr(message, "out", False)
-        and getattr(message, "via_bot_id", None) == bot.bot_id
-        and getattr(message, "raw_text", None) in {"📝", "🔐", "\u2063"}
-    ]
+    message_ids = []
+    password_kept = False
+    for message in messages:
+        if not getattr(message, "out", False):
+            continue
+        if getattr(message, "via_bot_id", None) != bot.bot_id:
+            continue
+        marker = getattr(message, "raw_text", None)
+        if marker == "🔐" and not password_kept:
+            password_kept = True
+            continue
+        if marker in {"📝", "🔐", "\u2063"}:
+            message_ids.append(message.id)
     if not message_ids:
         return
     with contextlib.suppress(Exception):

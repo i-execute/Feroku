@@ -40,7 +40,8 @@ class BotPM:
         self._started = False
         self._handlers_registered = False
         self._start_lock = asyncio.Lock()
-        self._flow_message_ids: set[int] = set()
+        self._flow_message = None
+        self._password_input_message = None
         self._seen_starts: dict[int, tuple[int, int | None]] = {}
 
     async def start(self):
@@ -153,6 +154,13 @@ class BotPM:
             return
         with contextlib.suppress(asyncio.TimeoutError, asyncio.CancelledError):
             await asyncio.wait_for(asyncio.shield(state[1]), timeout=10)
+        if state[3] == "🔐":
+            previous = self._password_input_message
+            self._password_input_message = message
+            if previous is not None and previous.id != message.id:
+                with contextlib.suppress(Exception):
+                    await previous.delete()
+            return
         with contextlib.suppress(Exception):
             await event.delete()
 
@@ -167,8 +175,6 @@ class BotPM:
             return
         self._choice_state.set_result(self._choice_options[data])
         await event.answer()
-        with contextlib.suppress(Exception):
-            await event.delete()
 
     async def _remember_start(self, event) -> None:
         access_hash = None
@@ -220,26 +226,40 @@ class BotPM:
         return await self._waiter
 
     def _track_message(self, message):
-        message_id = getattr(message, "id", None)
-        if isinstance(message_id, int):
-            self._flow_message_ids.add(message_id)
+        self._flow_message = message
         return message
 
     async def clear_flow_messages(self):
-        if self.chat_id and self._flow_message_ids:
+        if self._flow_message is not None:
+            text = getattr(self._flow_message, "raw_text", None) or "\u2063"
             with contextlib.suppress(Exception):
-                await self.client.delete_messages(
+                self._flow_message = await self.client.edit_message(
                     self.chat_id,
-                    list(self._flow_message_ids),
+                    self._flow_message,
+                    text=text,
+                    buttons=Button.clear(),
+                    parse_mode="HTML",
                 )
-        self._flow_message_ids.clear()
         self._qr_msg = None
 
-    async def send(self, text: str, *, track: bool = True):
+    async def send(self, text: str, *, track: bool = True, buttons=None):
+        buttons = Button.clear() if buttons is None else buttons
+        if self._flow_message is not None:
+            try:
+                message = await self.client.edit_message(
+                    self.chat_id,
+                    self._flow_message,
+                    text=text,
+                    buttons=buttons,
+                    parse_mode="HTML",
+                )
+                return self._track_message(message) if track else message
+            except Exception:
+                pass
         message = await self.client.send_message(
             self.chat_id,
             text,
-            buttons=Button.clear(),
+            buttons=buttons,
             parse_mode="HTML",
         )
         return self._track_message(message) if track else message
@@ -247,14 +267,7 @@ class BotPM:
     async def _choose(self, text: str, buttons, options: dict[str, str]) -> str:
         self._choice_state = asyncio.get_running_loop().create_future()
         self._choice_options = options
-        self._track_message(
-            await self.client.send_message(
-                self.chat_id,
-                text,
-                buttons=buttons,
-                parse_mode="HTML",
-            )
-        )
+        await self.send(text, buttons=buttons)
         try:
             return await self._choice_state
         finally:
@@ -316,15 +329,11 @@ class BotPM:
         token = utils_rand(10)
         fut = asyncio.get_running_loop().create_future()
         self._ask_state = (token, fut, label, marker)
-        self._track_message(
-            await self.client.send_message(
-                self.chat_id,
-                prompt,
-                buttons=Button.switch_inline(
-                    label, query=token, same_peer=True, style="primary"
-                ),
-                parse_mode="HTML",
-            )
+        await self.send(
+            prompt,
+            buttons=Button.switch_inline(
+                label, query=token, same_peer=True, style="primary"
+            ),
         )
         try:
             return await fut
@@ -334,18 +343,27 @@ class BotPM:
     async def send_photo(self, png: bytes, caption: str):
         bio = io.BytesIO(png)
         bio.name = "qr.png"
-        msg = await self.client.send_file(
+        if self._flow_message is not None:
+            try:
+                self._qr_msg = await self.client.edit_message(
+                    self.chat_id,
+                    self._flow_message,
+                    text=caption,
+                    file=bio,
+                    buttons=Button.clear(),
+                    parse_mode="HTML",
+                )
+                return self._track_message(self._qr_msg)
+            except Exception:
+                bio.seek(0)
+        self._qr_msg = await self.client.send_file(
             self.chat_id,
             file=bio,
             caption=caption,
             force_document=False,
             parse_mode="HTML",
         )
-        if self._qr_msg is not None:
-            with contextlib.suppress(Exception):
-                await self._qr_msg.delete()
-        self._qr_msg = msg
-        return self._track_message(msg)
+        return self._track_message(self._qr_msg)
 
     async def edit_photo(self, png: bytes, caption: str):
         if self._qr_msg is None:
@@ -358,9 +376,10 @@ class BotPM:
                 self._qr_msg,
                 text=caption,
                 file=bio,
+                buttons=Button.clear(),
                 parse_mode="HTML",
             )
-            return self._qr_msg
+            return self._track_message(self._qr_msg)
         except Exception:
             return await self.send_photo(png, caption)
 

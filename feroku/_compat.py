@@ -19,6 +19,8 @@ def redirect_import(name: str) -> str:
         return f"telethon{name[7:]}"
     if name.startswith("herokutl"):
         return f"telethon{name[8:]}"
+    if name.startswith("ataraxiatl"):
+        return f"telethon{name[10:]}"
     return name
 
 
@@ -42,6 +44,16 @@ def install_main_compat(namespace: dict, application, instance) -> None:
 
 def resolve_asset_name(name: str) -> str:
     return "Feroku.PNG" if name == "Heroku.PNG" else name
+
+
+def install_rich_compat(module) -> None:
+    for name in (
+        "telethon.extensions.rich",
+        "herokutl.extensions.rich",
+        "hikkatl.extensions.rich",
+        "ataraxiatl.extensions.rich",
+    ):
+        sys.modules[name] = module
 
 
 def migrate_legacy_sessions(base_dir: str, sessions_dir: str) -> None:
@@ -99,9 +111,14 @@ async def _edit_message(
     buttons=None,
     supports_streaming=False,
     schedule=None,
+    rich=None,
 ):
     from telethon import functions, utils
     from telethon.tl import types as tl_types
+
+    if rich is not None:
+        text = _rich_html(rich)
+        parse_mode = "html"
 
     if isinstance(
         entity,
@@ -110,7 +127,8 @@ async def _edit_message(
         text = text or message
         message = entity
     elif isinstance(entity, tl_types.Message):
-        text = message
+        if rich is None:
+            text = message
         message = entity
         entity = entity.peer_id
     if formatting_entities is None:
@@ -159,6 +177,31 @@ async def _edit_message(
 
 _original_send_message = None
 _original_send_file = None
+_original_forward_messages = None
+
+_ATARAXIA_SEND_MESSAGE_KWARGS = (
+    "noforwards",
+    "update_stickersets_order",
+    "allow_paid_floodskip",
+    "schedule_repeat_period",
+    "quick_reply_shortcut",
+    "allow_paid_stars",
+    "suggested_post",
+)
+_ATARAXIA_SEND_FILE_KWARGS = _ATARAXIA_SEND_MESSAGE_KWARGS + ("workers",)
+
+
+def _rich_html(value):
+    if isinstance(value, str):
+        return value
+    from .utils.rich import rich_message_to_html
+
+    return rich_message_to_html(value)
+
+
+def _drop_kwargs(kwargs: dict, names: tuple[str, ...]) -> None:
+    for name in names:
+        kwargs.pop(name, None)
 
 
 async def _apply_invert_media(client, result, link_preview=True):
@@ -180,7 +223,16 @@ async def _apply_invert_media(client, result, link_preview=True):
     )
 
 
-async def _send_message(self, *args, invert_media=False, **kwargs):
+async def _send_message(self, *args, invert_media=False, rich=None, **kwargs):
+    _drop_kwargs(kwargs, _ATARAXIA_SEND_MESSAGE_KWARGS)
+    if rich is not None:
+        text = _rich_html(rich)
+        args = list(args)
+        if len(args) > 1:
+            args[1] = text
+        else:
+            kwargs["message"] = text
+        kwargs["parse_mode"] = "html"
     result = await _original_send_message(self, *args, **kwargs)
     if not invert_media:
         return result
@@ -192,23 +244,86 @@ async def _send_message(self, *args, invert_media=False, **kwargs):
 
 
 async def _send_file(self, *args, invert_media=False, **kwargs):
+    _drop_kwargs(kwargs, _ATARAXIA_SEND_FILE_KWARGS)
     result = await _original_send_file(self, *args, **kwargs)
     if not invert_media:
         return result
     return await _apply_invert_media(self, result)
 
 
+async def _forward_messages(
+    self,
+    entity,
+    messages,
+    from_peer=None,
+    *,
+    background=None,
+    with_my_score=None,
+    silent=None,
+    as_album=None,
+    schedule=None,
+    drop_author=None,
+    drop_media_captions=None,
+    noforwards=None,
+    allow_paid_floodskip=None,
+    top_msg_id=None,
+    schedule_repeat_period=None,
+    send_as=None,
+    quick_reply_shortcut=None,
+    message_effect_id=None,
+    video_timestamp=None,
+    allow_paid_stars=None,
+    suggested_post=None,
+    reply_to=None,
+):
+    return await _original_forward_messages(
+        self,
+        entity,
+        messages,
+        from_peer,
+        background=background,
+        with_my_score=with_my_score,
+        silent=silent,
+        as_album=as_album,
+        schedule=schedule,
+        drop_author=drop_author,
+        drop_media_captions=drop_media_captions,
+    )
+
+
 def install_telethon_compat():
-    global _original_send_file, _original_send_message
+    global _original_forward_messages, _original_send_file, _original_send_message
 
     from telethon.client.messages import MessageMethods
     from telethon.client.uploads import UploadMethods
+    from telethon.extensions import html as telethon_html
+    from telethon.helpers import add_surrogate, del_surrogate
+
+    aliases = {
+        "_add_surrogate": add_surrogate,
+        "_del_surrogate": del_surrogate,
+        "CUSTOM_EMOJIS": True,
+        "DATE_FORMAT": (
+            ("r", "relative"),
+            ("w", "day_of_week"),
+            ("d", "short_date"),
+            ("D", "long_date"),
+            ("t", "short_time"),
+            ("T", "long_time"),
+        ),
+    }
+    for name, value in aliases.items():
+        if not hasattr(telethon_html, name):
+            setattr(telethon_html, name, value)
 
     if "invert_media" not in inspect.signature(MessageMethods.edit_message).parameters:
         MessageMethods.edit_message = _edit_message
     if "invert_media" not in inspect.signature(MessageMethods.send_message).parameters:
         _original_send_message = MessageMethods.send_message
         MessageMethods.send_message = _send_message
+    if "noforwards" not in inspect.signature(MessageMethods.forward_messages).parameters:
+        _original_forward_messages = MessageMethods.forward_messages
+        MessageMethods.forward_messages = _forward_messages
     if "invert_media" not in inspect.signature(UploadMethods.send_file).parameters:
         _original_send_file = UploadMethods.send_file
         UploadMethods.send_file = _send_file
@@ -216,10 +331,10 @@ def install_telethon_compat():
 
 class _TelethonCompatModule(types.ModuleType):
     def __getattr__(self, name: str):
-        import telethon
-
+        target = self.__dict__.get("_target_name", "telethon")
+        real_module = importlib.import_module(target)
         try:
-            real = getattr(telethon, name)
+            real = getattr(real_module, name)
         except AttributeError:
             root = self.__name__.split(".", 1)[0]
             raise AttributeError(f"module '{root}' has no attribute '{name}'") from None
@@ -229,10 +344,11 @@ class _TelethonCompatModule(types.ModuleType):
 
 
 def _install() -> None:
-    for alias in ("herokutl", "hikkatl"):
+    for alias in ("herokutl", "hikkatl", "ataraxiatl"):
         if alias in sys.modules:
             continue
         module = _TelethonCompatModule(alias)
+        module._target_name = "telethon"
         module.__path__ = []
         sys.modules[alias] = module
 
@@ -264,26 +380,46 @@ def _install_submodule(alias: str, name: str) -> types.ModuleType:
         return module
 
     module = _TelethonCompatModule(module_name)
+    module._target_name = f"telethon.{name}"
     module.__dict__.update(
         {key: value for key, value in vars(real).items() if not key.startswith("__")}
     )
+    if hasattr(real, "__path__"):
+        module.__path__ = []
     sys.modules[module_name] = module
     return module
 
 
 _install()
 
-for _alias in ("herokutl", "hikkatl"):
+for _alias in ("herokutl", "hikkatl", "ataraxiatl"):
     for _path in (
+        "client",
+        "client.messages",
+        "client.uploads",
+        "custom",
         "errors",
         "errors.common",
+        "errors.rpcbaseerrors",
         "errors.rpcerrorlist",
+        "events",
+        "extensions",
+        "extensions.html",
+        "extensions.markdown",
+        "functions",
+        "helpers",
+        "hints",
         "network",
         "network.requeststate",
+        "password",
+        "sessions",
         "tl",
+        "tl.custom",
+        "tl.custom.message",
         "tl.tlobject",
         "tl.types",
         "types",
+        "utils",
     ):
         _install_submodule(_alias, _path)
 
