@@ -57,6 +57,15 @@ def sudo_stdin_command(command: str, shell: str) -> str:
     )
 
 
+def alias_prelude(shell: str) -> str:
+    if os.path.basename(os.path.realpath(shell)) != "bash":
+        return ""
+    return (
+        "shopt -s expand_aliases\n"
+        "[ -f ~/.bash_aliases ] && . ~/.bash_aliases\n"
+    )
+
+
 class MessageEditor:
     def __init__(self, message, command, strings):
         self.message = message
@@ -373,6 +382,8 @@ class Executor(loader.Module):
         "fw_protect": "Flood wait protection delay in seconds",
         "command_protect": "Block dangerous commands",
         "eval_debug_loop": "Update the running evaluation timer every 1 to 5 seconds",
+        "extra_path": "Extra directories added to PATH for shell commands, separated by colon",
+        "load_aliases": "Load ~/.bash_aliases before shell commands (bash only)",
         "sudo_password_button": "Input password",
         "sudo_password_input": "🔐 Submit sudo password",
         "sudo_password_required": "<b>sudo password required</b>",
@@ -380,6 +391,10 @@ class Executor(loader.Module):
     }
 
     COMMAND_PROTECT = "command_protect"
+    DEFAULT_EXTRA_PATH = (
+        "~/.local/bin:~/bin:~/.deno/bin:~/.hermes/bin:"
+        "~/.cargo/bin:~/.bun/bin:/snap/bin"
+    )
     DANGEROUS_RM_TARGETS = {
         "/", "/bin", "/boot", "/dev", "/etc", "/lib", "/lib64",
         "/opt", "/proc", "/root", "/sbin", "/sys", "/usr", "/var",
@@ -410,6 +425,18 @@ class Executor(loader.Module):
                 self.COMMAND_PROTECT,
                 True,
                 lambda: self.strings["command_protect"],
+                validator=loader.validators.Boolean(),
+            ),
+            loader.ConfigValue(
+                "EXTRA_PATH",
+                self.DEFAULT_EXTRA_PATH,
+                lambda: self.strings["extra_path"],
+                validator=loader.validators.String(),
+            ),
+            loader.ConfigValue(
+                "LOAD_ALIASES",
+                True,
+                lambda: self.strings["load_aliases"],
                 validator=loader.validators.Boolean(),
             ),
             loader.ConfigValue(
@@ -569,14 +596,29 @@ class Executor(loader.Module):
             return
         await self._execute_shell(message, cmd)
 
+    def _build_env(self) -> dict[str, str]:
+        env = os.environ.copy()
+        current = [p for p in env.get("PATH", "").split(":") if p]
+        extra = []
+        for raw in str(self.config["EXTRA_PATH"]).split(":"):
+            path = os.path.expanduser(raw.strip())
+            if path and os.path.isdir(path) and path not in current and path not in extra:
+                extra.append(path)
+        env["PATH"] = ":".join(extra + current)
+        return env
+
     async def _execute_shell(self, message: Message, cmd: str):
         shell = os.environ.get("SHELL", "/bin/sh")
+        script = sudo_stdin_command(cmd, shell)
+        if self.config["LOAD_ALIASES"]:
+            script = alias_prelude(shell) + script
         utils.ensure_child_watcher()
         try:
             sproc = await asyncio.create_subprocess_exec(
                 shell,
                 "-c",
-                sudo_stdin_command(cmd, shell),
+                script,
+                env=self._build_env(),
                 stdin=asyncio.subprocess.PIPE,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
