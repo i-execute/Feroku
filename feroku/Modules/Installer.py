@@ -8,6 +8,7 @@ import ast
 import asyncio
 import contextlib
 import difflib
+import importlib
 import inspect
 import io
 import logging
@@ -15,6 +16,7 @@ import os
 import re
 import requests
 import subprocess
+import sys
 import uuid
 from importlib.machinery import ModuleSpec
 from urllib.parse import unquote, urlparse
@@ -24,7 +26,7 @@ from telethon.tl.types import InputMediaWebPage
 from telethon.errors.rpcerrorlist import MediaCaptionTooLongError
 
 from .. import loader, main, utils
-from .._compat import match_legacy_minimum
+from .._compat import is_project_import, match_legacy_minimum
 from ..inline.types import InlineCall
 from ..types import CoreOverwriteError, CoreUnloadError
 
@@ -610,6 +612,40 @@ class Installer(loader.Module):
 
         await self.load_module(doc, message, save_fs=True)
 
+    @staticmethod
+    def _requirement_name(import_name: str) -> str:
+        root = import_name.split(".", maxsplit=1)[0]
+        return {
+            "cv2": "opencv-python",
+            "pil": "Pillow",
+            "sklearn": "scikit-learn",
+            "yaml": "PyYAML",
+        }.get(root.lower(), root)
+
+    @staticmethod
+    async def _install_requirement(requirement: str) -> bool:
+        process = await asyncio.create_subprocess_exec(
+            sys.executable,
+            "-m",
+            "pip",
+            "install",
+            "--upgrade",
+            "--disable-pip-version-check",
+            "--no-warn-script-location",
+            requirement,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        stdout, stderr = await process.communicate()
+        if process.returncode:
+            logger.error(
+                "Dependency installation failed for %s: %s%s",
+                requirement,
+                stdout.decode(errors="replace"),
+                stderr.decode(errors="replace"),
+            )
+            return False
+        return True
 
     async def load_module(
         self,
@@ -619,6 +655,7 @@ class Installer(loader.Module):
         origin: str = "<string>",
         save_fs: bool = True,
         _raise_install_errors: bool = False,
+        _requirements_attempted: bool = False,
     ) -> bool:
         module_label = name or origin
 
@@ -731,15 +768,51 @@ class Installer(loader.Module):
                     save_fs=save_fs,
                 )
             except ImportError as e:
+                import_name = getattr(e, "name", "") or ""
+                requirement = self._requirement_name(import_name)
                 logger.error(
                     "Module %s failed to load, missing dependency: %s",
                     module_label,
-                    getattr(e, "name", e),
+                    import_name or e,
                 )
+                if (
+                    _requirements_attempted
+                    or not requirement
+                    or is_project_import(import_name)
+                ):
+                    if _raise_install_errors:
+                        raise ModuleInstallError(str(e)) from e
+                    if message is not None:
+                        await utils.answer(
+                            message,
+                            self.strings["requirements_failed"],
+                        )
+                    return False
                 if message is not None:
-                    await utils.answer(message, self.strings["requirements_failed"])
-
-                return False
+                    await utils.answer(
+                        message,
+                        "<b>Installing dependency</b> "
+                        f"<code>{utils.escape_html(requirement)}</code>",
+                    )
+                if not await self._install_requirement(requirement):
+                    if _raise_install_errors:
+                        raise ModuleInstallError(requirement) from e
+                    if message is not None:
+                        await utils.answer(
+                            message,
+                            self.strings["requirements_failed"],
+                        )
+                    return False
+                importlib.invalidate_caches()
+                return await self.load_module(
+                    doc,
+                    message,
+                    name=name,
+                    origin=origin,
+                    save_fs=save_fs,
+                    _raise_install_errors=_raise_install_errors,
+                    _requirements_attempted=True,
+                )
             except CoreOverwriteError as e:
                 logger.error(
                     "Module %s tried to overwrite core %s %s",
@@ -767,6 +840,8 @@ class Installer(loader.Module):
                             ),
                         )
                 return False
+        except ModuleInstallError:
+            raise
         except Exception as e:
             logger.exception("Loading external module failed due to %s", e)
 

@@ -24,6 +24,9 @@ from telethon.tl.types import (
 )
 from telethon.tl import TLObject
 
+from ..assets import FEROKU_IMAGE_URL
+
+
 class TelethonBot:
     def __init__(self, client):
         self.client = client
@@ -502,9 +505,8 @@ def web_document(
     mime_type: str = "image/jpeg",
     width: int = 128,
     height: int = 128,
-) -> types.InputWebDocument | None:
-    if not url:
-        return None
+) -> types.InputWebDocument:
+    url = url or FEROKU_IMAGE_URL
 
     return types.InputWebDocument(
         url=url,

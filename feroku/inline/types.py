@@ -10,6 +10,7 @@ import typing
 from telethon.tl import types
 
 from .._compat import install_inline_type_compat
+from ..assets import feroku_image_document
 
 FerokuReplyMarkup = typing.Union[list[list[dict]], list[dict], dict]
 install_inline_type_compat(globals(), FerokuReplyMarkup)
@@ -366,6 +367,7 @@ class InlineQuery:
             type="article",
             title=title,
             description=description,
+            thumb=feroku_image_document(),
             send_message=types.InputBotInlineMessageRichMessage(
                 rich_message=rich_message,
                 reply_markup=markup,
@@ -388,6 +390,7 @@ class InlineQuery:
                 text=" <i>There is nothing here...</i>",
                 parse_mode="HTML",
                 link_preview=False,
+                thumb=feroku_image_document(),
             )
         ]
 

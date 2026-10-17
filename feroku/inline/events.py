@@ -11,6 +11,7 @@ import typing
 from telethon.tl.types import UpdateBotInlineSend
 
 from .. import utils, security
+from ..assets import feroku_image_document
 from .types import BotInlineCall, InlineCall, InlineQuery, InlineUnit
 
 if typing.TYPE_CHECKING:
@@ -451,6 +452,7 @@ class Events(InlineUnit):
                         text=self.translator.getkey("inline.no_inline_cmds_msg"),
                         parse_mode="HTML",
                         link_preview=False,
+                        thumb=feroku_image_document(),
                         id=utils.rand(20),
                     )
                 ],
@@ -472,6 +474,7 @@ class Events(InlineUnit):
                     ),
                     parse_mode="HTML",
                     link_preview=False,
+                    thumb=feroku_image_document(),
                     id=utils.rand(20),
                 )
             ]

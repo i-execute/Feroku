@@ -16,6 +16,7 @@ from telethon.sessions import SQLiteSession, StringSession
 from telethon.tl.custom.button import Button
 from telethon.tl.types import InputPeerUser, UpdateBotInlineSend
 
+from .assets import feroku_image_document
 from .utils.other import rand as utils_rand
 
 
@@ -118,9 +119,10 @@ class BotPM:
             [
                 await event.builder.article(
                     label,
-                    description=label,
+                    description="Dont remove id",
                     text=marker,
                     parse_mode=None,
+                    thumb=feroku_image_document(),
                     id=hashlib.sha256(text.encode()).hexdigest(),
                 )
             ],
@@ -332,7 +334,7 @@ class BotPM:
         await self.send(
             prompt,
             buttons=Button.switch_inline(
-                label, query=token, same_peer=True, style="primary"
+                label, query=f"{token} ", same_peer=True, style="primary"
             ),
         )
         try:

@@ -94,6 +94,10 @@ def match_legacy_minimum(doc: str):
     return re.search(r"# ?scope: ?heroku_min ((?:\d+\.){2}\d+)", doc)
 
 
+def is_project_import(name: str) -> bool:
+    return name.split(".", maxsplit=1)[0].lower() in {"feroku", "hikka", "heroku"}
+
+
 async def _edit_message(
     self,
     entity,

@@ -16,6 +16,7 @@ from telethon.errors.rpcerrorlist import ChatSendInlineForbiddenError
 from telethon.tl.types import Message
 
 from .. import main, utils
+from ..assets import feroku_image_document
 from ..types import FerokuReplyMarkup
 from .types import InlineMessage, InlineUnit
 
@@ -310,6 +311,7 @@ class List(InlineUnit):
                                 ),
                                 parse_mode="HTML",
                                 link_preview=False,
+                                thumb=feroku_image_document(),
                                 buttons=self._list_markup(inline_query.query),
                                 id=utils.rand(20),
                             )

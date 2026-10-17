@@ -19,6 +19,7 @@ from telethon.errors.rpcerrorlist import ChatSendInlineForbiddenError
 from telethon.tl.types import InputGeoPoint, Message
 
 from .. import main, utils
+from ..assets import feroku_image_document
 from ..types import FerokuReplyMarkup
 from .types import InlineMessage, InlineUnit
 
@@ -409,6 +410,7 @@ class Form(InlineUnit):
                                 text="🔐" if button.get("marker") == "🔐" else "📝",
                                 parse_mode="HTML",
                                 link_preview=False,
+                                thumb=feroku_image_document(),
                                 id=utils.rand(20),
                             )
                         ],
@@ -520,6 +522,7 @@ class Form(InlineUnit):
                                     long=form["location"][1],
                                 ),
                                 period=60,
+                                thumb=feroku_image_document(),
                                 id=utils.rand(20),
                                 buttons=self.generate_markup(
                                     form["uid"],
@@ -553,6 +556,7 @@ class Form(InlineUnit):
                                 text=form_text,
                                 parse_mode="HTML",
                                 link_preview=False,
+                                thumb=feroku_image_document(),
                                 buttons=self.generate_markup(inline_query.query),
                                 id=utils.rand(20),
                             )
