@@ -26,13 +26,58 @@ class Settings(loader.Module):
         "alias_removed": "<b>Alias</b> <code>{}</code> <b>removed</b>.",
         "aliases_removed": "<b>Removed {count} aliases:</b>\n<blockquote expandable>{aliases}</blockquote>",
         "aliases_cleared": "<b>All aliases removed</b>.",
+        "aliases_list": "<b>Current aliases: {count}</b>\n<blockquote expandable>{aliases}</blockquote>",
+        "aliases_list_line": "{emoji} <code>{prefix}{alias}</code> - <code>{prefix}{command}</code>",
+        "aliases_empty": "<b>No aliases configured</b>",
         "no_alias": "<b>Alias</b> <code>{}</code> <b>does not exist</b>",
+        "_cmd_doc_alias": "Show all current aliases",
         "_cmd_doc_addalias": "Set an alias for a command",
         "_cmd_doc_delalias": "<alias|-c|--clear> - Remove an alias or clear all aliases",
         "_cmd_doc_prefix": "<prefix> - Set the primary owner's command prefix",
         "_cls_doc": "Control core userbot settings",
     }
 
+    def __init__(self):
+        self.config = loader.ModuleConfig(
+            loader.ConfigValue(
+                "alias_emoji",
+                "→",
+                lambda: "Alias symbol",
+            ),
+        )
+
+    @loader.command()
+    async def alias(self, message: Message):
+        aliases = self.get("aliases", {})
+        if not isinstance(aliases, dict) or not aliases:
+            await utils.answer(message, self.strings["aliases_empty"])
+            return
+
+        prefix = utils.escape_html(self.get_prefix())
+        lines = [
+            self.strings["aliases_list_line"].format(
+                emoji=self.config["alias_emoji"],
+                prefix=prefix,
+                alias=utils.escape_html(alias),
+                command=utils.escape_html(command),
+            )
+            for alias, command in sorted(
+                aliases.items(),
+                key=lambda item: str(item[0]).lower(),
+            )
+            if isinstance(alias, str) and isinstance(command, str)
+        ]
+        if not lines:
+            await utils.answer(message, self.strings["aliases_empty"])
+            return
+
+        await utils.answer(
+            message,
+            self.strings["aliases_list"].format(
+                count=len(lines),
+                aliases="\n".join(lines),
+            ),
+        )
 
     @loader.command()
     async def prefix(self, message: Message):
