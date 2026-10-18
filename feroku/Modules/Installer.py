@@ -40,12 +40,12 @@ class Installer(loader.Module):
 
     strings = {
         "name": "Installer",
-        "link": "<b>File of</b> {class_name}\n\n<b>{prefix}lm in reply to this message to install</b>\n\n<code>{prefix}dlm {url}</code>\n\n{not_exact}",
-        "file": "<b>File of</b> {class_name}\n\n<b>{prefix}lm in reply to this message to install</b>\n\n{not_exact}",
+        "link": "<b>File of</b> {class_name}\n\n<b>{prefix}lm in reply to this message to install</b>\n\n<code>{prefix}dlm {url}</code>{not_exact}",
+        "file": "<b>File of</b> {class_name}\n\n<b>{prefix}lm in reply to this message to install</b>{not_exact}",
         "loading_module_via_file": "<b>Installing module</b>",
         "ml_load_module": "<b>Preparing module file</b>",
         "no_ml": "<b>Module</b> <code>{}</code> <b>cannot be exported as a file</b>",
-        "not_exact": "<i>No exact match has been found, so the closest result is shown instead</i>",
+        "not_exact": "\n<blockquote>No exact match has been found, so the closest result is shown instead</blockquote>",
         "args": "<b>You must specify arguments</b>",
         "provide_module": "<b>Provide a module to load</b>",
         "bad_unicode": "<b>Invalid Unicode formatting in module</b>",
