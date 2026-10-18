@@ -762,6 +762,9 @@ class Feroku:
             return False
         await db.ensure_content_channel()
         await modules.send_ready()
+        with contextlib.suppress(Exception):
+            if restart_module := modules.lookup("Restart"):
+                await restart_module.full_restart_complete()
 
         if first:
             await self._badge(client)
