@@ -53,6 +53,11 @@ class Help(loader.Module):
                 lambda: "Command symbol",
             ),
             loader.ConfigValue(
+                "inline_emoji",
+                "→",
+                lambda: "Inline command symbol",
+            ),
+            loader.ConfigValue(
                 "banner_url",
                 None,
                 lambda: "Banner for .help",
@@ -166,8 +171,8 @@ class Help(loader.Module):
         if hasattr(module, "inline_handlers"):
             for name, fun in module.inline_handlers.items():
                 inline_cmd += (
-                    "\n"
-                    " <code>{}</code> {}".format(
+                    "\n{} <code>{}</code> {}".format(
+                        self.config["inline_emoji"],
                         f"@{self.inline.bot_username} {name}",
                         (
                             utils.escape_html(inspect.getdoc(fun))
@@ -348,10 +353,10 @@ class Help(loader.Module):
 
             for command_name in inline_commands:
                 if first:
-                    tmp += f": (  {command_name}"
+                    tmp += f": ( {self.config['inline_emoji']} {command_name}"
                     first = False
                 else:
-                    tmp += f" |  {command_name}"
+                    tmp += f" | {self.config['inline_emoji']} {command_name}"
 
             for placeholder in placeholders:
                 if first:
