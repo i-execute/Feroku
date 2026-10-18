@@ -656,6 +656,7 @@ class Installer(loader.Module):
         save_fs: bool = True,
         _raise_install_errors: bool = False,
         _requirements_attempted: bool = False,
+        _clear_unloaded: bool = True,
     ) -> bool:
         module_label = name or origin
 
@@ -818,6 +819,7 @@ class Installer(loader.Module):
                     save_fs=save_fs,
                     _raise_install_errors=_raise_install_errors,
                     _requirements_attempted=True,
+                    _clear_unloaded=_clear_unloaded,
                 )
             except CoreOverwriteError as e:
                 logger.error(
@@ -949,6 +951,19 @@ class Installer(loader.Module):
                 await utils.answer(message, self.strings["load_failed"])
 
             return False
+
+        if save_fs:
+            class_name = instance.__class__.__name__
+            unloaded = {
+                name.lower() for name in loader.get_unloaded_modules(self._db)
+            }
+            if not _clear_unloaded and class_name.lower() in unloaded:
+                await self.allmodules.unload_module(class_name)
+                return False
+            if instance not in self.allmodules.modules:
+                return False
+            if _clear_unloaded:
+                loader.mark_modules_loaded(self._db, [class_name])
 
         instance.feroku_meta_pic = next(
             (
@@ -1235,7 +1250,14 @@ class Installer(loader.Module):
             return self.strings["unload_core"].format(module)
 
         if worked:
-            loader.remove_module_origins(self._db, worked)
+            try:
+                loader.mark_modules_unloaded(self._db, worked)
+            except Exception:
+                logger.exception("Failed to persist unloaded modules")
+            try:
+                loader.remove_module_origins(self._db, worked)
+            except Exception:
+                logger.exception("Failed to remove unloaded module origins")
 
         msg = (
             self.strings["unloaded"].format(
@@ -1309,7 +1331,15 @@ class Installer(loader.Module):
         )
 
     async def _load_stored_modules(self):
+        unloaded = {
+            name.lower() for name in loader.get_unloaded_modules(self._db)
+        }
         for stored_name, url in loader.get_module_origins(self._db).items():
+            if stored_name.lower() in unloaded:
+                loader.remove_module_origins(self._db, [stored_name], [url])
+                with contextlib.suppress(OSError):
+                    loader.remove_module_source(stored_name)
+                continue
             existing = next(
                 (
                     module
@@ -1333,6 +1363,21 @@ class Installer(loader.Module):
                 class_name = loader.module_class_name(source)
                 if not class_name:
                     raise ValueError("module class not found")
+                unloaded = {
+                    name.lower() for name in loader.get_unloaded_modules(self._db)
+                }
+                if {
+                    stored_name.lower(),
+                    class_name.lower(),
+                } & unloaded:
+                    loader.remove_module_origins(
+                        self._db,
+                        [stored_name, class_name],
+                        [url],
+                    )
+                    with contextlib.suppress(OSError):
+                        loader.remove_module_source(class_name)
+                    continue
                 installed = await self.load_module(
                     source,
                     None,
@@ -1340,6 +1385,7 @@ class Installer(loader.Module):
                     origin=url,
                     save_fs=True,
                     _raise_install_errors=True,
+                    _clear_unloaded=False,
                 )
                 if installed and class_name != stored_name:
                     loader.remove_module_origins(self._db, [stored_name])

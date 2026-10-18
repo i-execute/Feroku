@@ -71,18 +71,32 @@ class Backup(loader.Module):
                 option=orjson.OPT_INDENT_2 | orjson.OPT_NON_STR_KEYS,
             )
         )
+        unloaded = {
+            name.lower() for name in loader.get_unloaded_modules(self._db)
+        }
         modules_file = io.BytesIO()
         with zipfile.ZipFile(modules_file, "w", zipfile.ZIP_DEFLATED) as archive:
             for root, _, files in os.walk(loader.MODULES_DIR):
                 for filename in files:
-                    if filename.endswith(".py"):
-                        path = os.path.join(root, filename)
-                        with open(path, "rb") as module_file:
-                            archive.writestr(filename, module_file.read())
+                    if not filename.endswith(".py"):
+                        continue
+                    path = os.path.join(root, filename)
+                    with open(path, "rb") as module_file:
+                        source = module_file.read()
+                    class_name = loader.module_class_name(source)
+                    if (class_name or Path(filename).stem).lower() in unloaded:
+                        continue
+                    archive.writestr(filename, source)
             archive.writestr(
                 "db_mods.json",
                 orjson.dumps(
-                    loader.get_module_origins(self._db),
+                    {
+                        class_name: url
+                        for class_name, url in loader.get_module_origins(
+                            self._db
+                        ).items()
+                        if class_name.lower() not in unloaded
+                    },
                     option=orjson.OPT_INDENT_2 | orjson.OPT_NON_STR_KEYS,
                 ),
             )
@@ -96,6 +110,9 @@ class Backup(loader.Module):
 
     async def _restore_modules(self, archive: zipfile.ZipFile):
         names = archive.namelist()
+        unloaded = {
+            name.lower() for name in loader.get_unloaded_modules(self._db)
+        }
         restored_classes = set()
         for name in names:
             if not Path(name).name.endswith(".py"):
@@ -105,6 +122,8 @@ class Backup(loader.Module):
             class_name = loader.module_class_name(source)
             if not class_name:
                 logger.warning("restore: skipped %s: module class not found", name)
+                continue
+            if class_name.lower() in unloaded:
                 continue
             loader.save_module_source(source, class_name)
             restored_classes.add(class_name)
@@ -126,6 +145,8 @@ class Backup(loader.Module):
         restored_origins = {}
         fetched = skipped = 0
         for mod, url in links.items():
+            if mod.lower() in unloaded:
+                continue
             if class_name := restored_lookup.get(mod.lower()):
                 restored_origins[class_name] = url
                 continue
@@ -135,6 +156,8 @@ class Backup(loader.Module):
                 class_name = loader.module_class_name(response.content)
                 if not class_name:
                     raise ValueError("module class not found")
+                if class_name.lower() in unloaded:
+                    continue
                 loader.save_module_source(response.content, class_name)
                 restored_classes.add(class_name)
                 restored_lookup[class_name.lower()] = class_name

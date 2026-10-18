@@ -253,6 +253,7 @@ def loop(
 MODULES_NAME = "Modules"
 MODULE_ORIGINS_OWNER = "Installer"
 MODULE_ORIGINS_KEY = "loaded_modules"
+UNLOADED_MODULES_KEY = "unloaded_modules"
 
 
 def get_module_origins(db: Database) -> dict[str, str]:
@@ -280,23 +281,83 @@ def set_module_origin(
         updated = {
             name: stored_url
             for name, stored_url in updated.items()
-            if name == class_name or stored_url != url
+            if name.lower() != class_name.lower() and stored_url != url
         }
         updated.update(candidate)
     else:
-        updated.pop(class_name, None)
+        updated = {
+            name: stored_url
+            for name, stored_url in updated.items()
+            if name.lower() != class_name.lower()
+        }
     if updated != origins:
         set_module_origins(db, updated)
     return updated
 
 
-def remove_module_origins(db: Database, class_names) -> dict[str, str]:
+def remove_module_origins(
+    db: Database,
+    class_names,
+    origin_urls=(),
+) -> dict[str, str]:
     origins = get_module_origins(db)
-    updated = dict(origins)
-    for class_name in class_names:
-        updated.pop(class_name, None)
+    names = {
+        class_name.lower()
+        for class_name in class_names
+        if isinstance(class_name, str)
+    }
+    urls = {url for url in origin_urls if isinstance(url, str)}
+    updated = {
+        class_name: url
+        for class_name, url in origins.items()
+        if class_name.lower() not in names and url not in urls
+    }
     if updated != origins:
         set_module_origins(db, updated)
+    return updated
+
+
+def get_unloaded_modules(db: Database) -> set[str]:
+    value = db.get(MODULE_ORIGINS_OWNER, UNLOADED_MODULES_KEY, [])
+    if not isinstance(value, (list, tuple, set)):
+        return set()
+    return {
+        class_name
+        for class_name in value
+        if isinstance(class_name, str) and class_name.isidentifier()
+    }
+
+
+def mark_modules_unloaded(db: Database, class_names) -> set[str]:
+    current = get_unloaded_modules(db)
+    by_name = {name.lower(): name for name in current}
+    for class_name in class_names:
+        if isinstance(class_name, str) and class_name.isidentifier():
+            by_name[class_name.lower()] = class_name
+    updated = set(by_name.values())
+    if updated != current:
+        db.set(
+            MODULE_ORIGINS_OWNER,
+            UNLOADED_MODULES_KEY,
+            sorted(updated, key=str.lower),
+        )
+    return updated
+
+
+def mark_modules_loaded(db: Database, class_names) -> set[str]:
+    current = get_unloaded_modules(db)
+    names = {
+        class_name.lower()
+        for class_name in class_names
+        if isinstance(class_name, str)
+    }
+    updated = {name for name in current if name.lower() not in names}
+    if updated != current:
+        db.set(
+            MODULE_ORIGINS_OWNER,
+            UNLOADED_MODULES_KEY,
+            sorted(updated, key=str.lower),
+        )
     return updated
 
 
@@ -343,13 +404,16 @@ def _module_source_files(class_name: str, directory: Path | None = None) -> list
     directory = directory or MODULES_PATH
     if not directory.exists():
         return []
+    target = class_name.lower()
     result = []
     for path in directory.glob("*.py"):
         try:
             source_class = module_class_name(path.read_bytes())
         except OSError:
             continue
-        if source_class == class_name or path.stem == class_name:
+        if (
+            isinstance(source_class, str) and source_class.lower() == target
+        ) or path.stem.lower() == target:
             result.append(path)
     return result
 
@@ -610,6 +674,14 @@ class Modules:
     ) -> list[Module]:
         loaded = []
         module_origins = get_module_origins(self._db) if origin == "<file>" else {}
+        module_origins_by_name = {
+            name.lower(): url for name, url in module_origins.items()
+        }
+        unloaded = (
+            {name.lower() for name in get_unloaded_modules(self._db)}
+            if origin == "<file>"
+            else set()
+        )
 
         for mod in modules:
             try:
@@ -618,9 +690,30 @@ class Modules:
                 user_friendly_origin = (
                     "<core {}>" if origin == "<core>" else "<file {}>"
                 ).format(module_name)
-                source = Path(mod).read_text(encoding="utf-8")
+                path = Path(mod)
+                source = path.read_text(encoding="utf-8")
+                source_class = module_class_name(source)
+                if (
+                    origin == "<file>"
+                    and (source_class or mod_shortname).lower() in unloaded
+                ):
+                    try:
+                        path.unlink(missing_ok=True)
+                    except OSError:
+                        logger.exception(
+                            "Failed to delete unloaded module file %s",
+                            path,
+                        )
+                    remove_module_origins(
+                        self._db,
+                        [source_class or mod_shortname],
+                    )
+                    continue
                 module_origin = (
-                    module_origins.get(module_class_name(source), origin)
+                    module_origins_by_name.get(
+                        (source_class or mod_shortname).lower(),
+                        origin,
+                    )
                     if origin == "<file>"
                     else origin
                 )
@@ -1198,33 +1291,77 @@ class Modules:
     async def unload_module(self, classname: str) -> list[str]:
         worked = []
 
-        for module in self.modules:
-            if classname.lower() in (
+        for module in self.modules.copy():
+            if classname.lower() not in (
                 module.name.lower(),
                 module.__class__.__name__.lower(),
             ):
-                if not self._remove_core_protection and module.__origin__.startswith(
-                    "<core"
-                ):
-                    raise CoreUnloadError(module.__class__.__name__)
+                continue
+            if not self._remove_core_protection and module.__origin__.startswith(
+                "<core"
+            ):
+                raise CoreUnloadError(module.__class__.__name__)
 
-                worked += [module.__class__.__name__]
+            name = module.__class__.__name__
+            origin = module.__origin__
+            origin_names = [name]
+            if isinstance(module.name, str):
+                origin_names.append(module.name)
+            worked.append(name)
+            try:
+                mark_modules_unloaded(self._db, [name])
+            except Exception:
+                logger.exception("Failed to persist unload marker for %s", name)
+            try:
+                remove_module_origins(self._db, origin_names, [origin])
+            except Exception:
+                logger.exception("Failed to remove module origins for %s", name)
 
-                name = module.__class__.__name__
+            logger.debug("Removing module %s for unload", module)
+            self.modules.remove(module)
+
+            cancelled_error = None
+            try:
+                await asyncio.wait_for(module.on_unload(), timeout=5)
+            except asyncio.TimeoutError:
+                logger.error("Module %s unload hook timed out", name)
+            except asyncio.CancelledError as error:
+                cancelled_error = error
+            except Exception:
+                logger.exception("Module %s unload hook failed", name)
+
+            for cleanup in (
+                self.unregister_raw_handlers,
+                self.unregister_bot_update_handlers,
+                self.unregister_loops,
+                self.unregister_commands,
+                self.unregister_watchers,
+                self.unregister_inline_stuff,
+            ):
+                try:
+                    cleanup(module, "unload")
+                except Exception:
+                    logger.exception(
+                        "Failed to run unload cleanup %s for %s",
+                        cleanup.__name__,
+                        name,
+                    )
+
+            try:
                 for path in remove_module_source(name):
                     logger.debug("Removed %s file at path %s", name, path)
-
-                logger.debug("Removing module %s for unload", module)
-                self.modules.remove(module)
-
-                await module.on_unload()
-
-                self.unregister_raw_handlers(module, "unload")
-                self.unregister_bot_update_handlers(module, "unload")
-                self.unregister_loops(module, "unload")
-                self.unregister_commands(module, "unload")
-                self.unregister_watchers(module, "unload")
-                self.unregister_inline_stuff(module, "unload")
+            except OSError:
+                logger.exception("Failed to delete module files for %s", name)
+            try:
+                mark_modules_unloaded(self._db, [name])
+            except Exception:
+                logger.exception("Failed to finalize unload marker for %s", name)
+            try:
+                remove_module_origins(self._db, origin_names, [origin])
+            except Exception:
+                logger.exception("Failed to finalize module origins for %s", name)
+            if cancelled_error is not None:
+                raise cancelled_error
 
         logger.debug("Worked: %s", worked)
         return worked
