@@ -28,6 +28,7 @@ from ._compat import (
     install_project_compat,
     redirect_import,
 )
+from ._compat_database import normalize_module_origins
 
 install_compat()
 
@@ -250,7 +251,53 @@ def loop(
     return wrapped
 
 MODULES_NAME = "Modules"
+MODULE_ORIGINS_OWNER = "Installer"
+MODULE_ORIGINS_KEY = "loaded_modules"
 
+
+def get_module_origins(db: Database) -> dict[str, str]:
+    return normalize_module_origins(
+        db.get(MODULE_ORIGINS_OWNER, MODULE_ORIGINS_KEY, {})
+    )
+
+
+def set_module_origins(db: Database, origins) -> dict[str, str]:
+    origins = normalize_module_origins(origins)
+    db.set(MODULE_ORIGINS_OWNER, MODULE_ORIGINS_KEY, origins)
+    return origins
+
+
+def set_module_origin(
+    db: Database,
+    class_name: str,
+    origin: str | None,
+) -> dict[str, str]:
+    origins = get_module_origins(db)
+    updated = dict(origins)
+    candidate = normalize_module_origins({class_name: origin})
+    if candidate:
+        url = candidate[class_name]
+        updated = {
+            name: stored_url
+            for name, stored_url in updated.items()
+            if name == class_name or stored_url != url
+        }
+        updated.update(candidate)
+    else:
+        updated.pop(class_name, None)
+    if updated != origins:
+        set_module_origins(db, updated)
+    return updated
+
+
+def remove_module_origins(db: Database, class_names) -> dict[str, str]:
+    origins = get_module_origins(db)
+    updated = dict(origins)
+    for class_name in class_names:
+        updated.pop(class_name, None)
+    if updated != origins:
+        set_module_origins(db, updated)
+    return updated
 
 
 BASE_DIR = (
@@ -562,6 +609,7 @@ class Modules:
         origin: str = "<core>",
     ) -> list[Module]:
         loaded = []
+        module_origins = get_module_origins(self._db) if origin == "<file>" else {}
 
         for mod in modules:
             try:
@@ -570,18 +618,24 @@ class Modules:
                 user_friendly_origin = (
                     "<core {}>" if origin == "<core>" else "<file {}>"
                 ).format(module_name)
+                source = Path(mod).read_text(encoding="utf-8")
+                module_origin = (
+                    module_origins.get(module_class_name(source), origin)
+                    if origin == "<file>"
+                    else origin
+                )
 
                 logger.debug("Loading %s from filesystem", module_name)
 
                 spec = importlib.machinery.ModuleSpec(
                     module_name,
-                    StringLoader(
-                        Path(mod).read_text(encoding="utf-8"), user_friendly_origin
-                    ),
+                    StringLoader(source, user_friendly_origin),
                     origin=user_friendly_origin,
                 )
 
-                loaded += [await self.register_module(spec, module_name, origin)]
+                loaded += [
+                    await self.register_module(spec, module_name, module_origin)
+                ]
 
                 logger.debug("Successfully loaded %s from filesystem", module_name)
             except Exception as e:

@@ -767,6 +767,12 @@ class Installer(loader.Module):
                     origin,
                     save_fs=save_fs,
                 )
+                if save_fs:
+                    loader.set_module_origin(
+                        self._db,
+                        instance.__class__.__name__,
+                        origin,
+                    )
             except ImportError as e:
                 import_name = getattr(e, "name", "") or ""
                 requirement = self._requirement_name(import_name)
@@ -880,6 +886,11 @@ class Installer(loader.Module):
                 with contextlib.suppress(Exception):
                     self.allmodules.modules.remove(instance)
 
+                loader.remove_module_origins(
+                    self._db,
+                    [instance.__class__.__name__],
+                )
+
                 if message:
                     if isinstance(e, loader.LoadError):
                         await utils.answer(
@@ -901,6 +912,11 @@ class Installer(loader.Module):
 
                 with contextlib.suppress(Exception):
                     self.allmodules.modules.remove(instance)
+
+                loader.remove_module_origins(
+                    self._db,
+                    [instance.__class__.__name__],
+                )
 
                 if message:
                     await utils.answer(
@@ -1218,6 +1234,9 @@ class Installer(loader.Module):
         except CoreUnloadError:
             return self.strings["unload_core"].format(module)
 
+        if worked:
+            loader.remove_module_origins(self._db, worked)
+
         msg = (
             self.strings["unloaded"].format(
                 "",
@@ -1289,6 +1308,49 @@ class Installer(loader.Module):
             start_new_session=True,
         )
 
+    async def _load_stored_modules(self):
+        for stored_name, url in loader.get_module_origins(self._db).items():
+            existing = next(
+                (
+                    module
+                    for module in self.allmodules.modules
+                    if module.__class__.__name__.lower() == stored_name.lower()
+                ),
+                None,
+            )
+            if existing is not None:
+                class_name = existing.__class__.__name__
+                if existing.__origin__.startswith("<core"):
+                    loader.remove_module_origins(self._db, [stored_name])
+                    continue
+                existing.__origin__ = url
+                if class_name != stored_name:
+                    loader.remove_module_origins(self._db, [stored_name])
+                    loader.set_module_origin(self._db, class_name, url)
+                continue
+            try:
+                source = await self._download_text(url)
+                class_name = loader.module_class_name(source)
+                if not class_name:
+                    raise ValueError("module class not found")
+                installed = await self.load_module(
+                    source,
+                    None,
+                    name=class_name,
+                    origin=url,
+                    save_fs=True,
+                    _raise_install_errors=True,
+                )
+                if installed and class_name != stored_name:
+                    loader.remove_module_origins(self._db, [stored_name])
+            except Exception as error:
+                logger.warning(
+                    "Failed to restore module %s from %s: %s",
+                    stored_name,
+                    url,
+                    error,
+                )
+
     async def _update_modules(self):
         self._secure_boot = False
 
@@ -1296,6 +1358,7 @@ class Installer(loader.Module):
             self._db.set(loader.__name__, "secure_boot", False)
             self._secure_boot = True
         else:
+            await self._load_stored_modules()
             aliases = {
                 alias: cmd
                 for alias, cmd in self.lookup("settings").get("aliases", {}).items()
@@ -1408,19 +1471,9 @@ class Installer(loader.Module):
         link = module.__origin__
 
         text = (
-            f"<b> {utils.escape_html(class_name)}</b>"
-            if not utils.check_url(link)
-            else (
-                f' <b><a href="{link}">Link</a> for'
-                f" {utils.escape_html(class_name)}:</b>"
-                f' <code>{link}</code>\n\n{self.strings["not_exact"] if not exact else ""}'
-            )
-        )
-
-        text = (
             self.strings["link"].format(
                 class_name=utils.escape_html(class_name),
-                url=link,
+                url=utils.escape_html(link),
                 not_exact=self.strings["not_exact"] if not exact else "",
                 prefix=utils.escape_html(self.get_prefix()),
             )

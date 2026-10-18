@@ -79,6 +79,13 @@ class Backup(loader.Module):
                         path = os.path.join(root, filename)
                         with open(path, "rb") as module_file:
                             archive.writestr(filename, module_file.read())
+            archive.writestr(
+                "db_mods.json",
+                orjson.dumps(
+                    loader.get_module_origins(self._db),
+                    option=orjson.OPT_INDENT_2 | orjson.OPT_NON_STR_KEYS,
+                ),
+            )
         result = io.BytesIO()
         with zipfile.ZipFile(result, "w", zipfile.ZIP_DEFLATED) as archive:
             archive.writestr("db.json", database_file.getvalue())
@@ -86,6 +93,67 @@ class Backup(loader.Module):
         result.seek(0)
         result.name = f"Feroku-{datetime.datetime.now():%d-%m-%Y-%H-%M}.backup"
         return result
+
+    async def _restore_modules(self, archive: zipfile.ZipFile):
+        names = archive.namelist()
+        restored_classes = set()
+        for name in names:
+            if not Path(name).name.endswith(".py"):
+                continue
+            with archive.open(name, "r") as module:
+                source = module.read()
+            class_name = loader.module_class_name(source)
+            if not class_name:
+                logger.warning("restore: skipped %s: module class not found", name)
+                continue
+            loader.save_module_source(source, class_name)
+            restored_classes.add(class_name)
+
+        if "db_mods.json" not in names:
+            return
+
+        try:
+            links = orjson.loads(archive.read("db_mods.json"))
+        except orjson.JSONDecodeError:
+            logger.warning("restore: invalid db_mods.json")
+            return
+        if not isinstance(links, dict):
+            logger.warning("restore: invalid db_mods.json structure")
+            return
+        links = loader.normalize_module_origins(links)
+
+        restored_lookup = {name.lower(): name for name in restored_classes}
+        restored_origins = {}
+        fetched = skipped = 0
+        for mod, url in links.items():
+            if class_name := restored_lookup.get(mod.lower()):
+                restored_origins[class_name] = url
+                continue
+            try:
+                response = await utils.run_sync(requests.get, url, timeout=30)
+                response.raise_for_status()
+                class_name = loader.module_class_name(response.content)
+                if not class_name:
+                    raise ValueError("module class not found")
+                loader.save_module_source(response.content, class_name)
+                restored_classes.add(class_name)
+                restored_lookup[class_name.lower()] = class_name
+                restored_origins[class_name] = url
+                fetched += 1
+            except Exception as error:
+                skipped += 1
+                logger.warning(
+                    "restore: failed to fetch %s from %s: %s",
+                    mod,
+                    url,
+                    error,
+                )
+        loader.set_module_origins(self._db, restored_origins)
+        logger.info(
+            "restore: fetched %d modules by url, %d failed",
+            fetched,
+            skipped,
+        )
 
     async def _send_backup(self, caption: str | None = None):
         caption = caption or self.strings["backupall_info"].format(
@@ -184,53 +252,7 @@ class Backup(loader.Module):
                 if "mods.zip" in zf.namelist():
                     with zf.open("mods.zip") as modzip_bytes:
                         with zipfile.ZipFile(io.BytesIO(modzip_bytes.read())) as modzip:
-                            names = modzip.namelist()
-                            restored_classes = set()
-                            for name in names:
-                                if not Path(name).name.endswith(".py"):
-                                    continue
-
-                                with modzip.open(name, "r") as module:
-                                    source = module.read()
-                                class_name = loader.module_class_name(source)
-                                if not class_name:
-                                    logger.warning(
-                                        "restore: skipped %s: module class not found", name
-                                    )
-                                    continue
-                                loader.save_module_source(source, class_name)
-                                restored_classes.add(class_name)
-
-                            if "db_mods.json" in names:
-                                links = orjson.loads(modzip.read("db_mods.json"))
-                                fetched = skipped = 0
-                                for mod, url in links.items():
-                                    if mod in restored_classes:
-                                        continue
-                                    try:
-                                        r = await utils.run_sync(
-                                            requests.get, url, timeout=30
-                                        )
-                                        r.raise_for_status()
-                                        class_name = loader.module_class_name(r.content)
-                                        if not class_name:
-                                            raise ValueError("module class not found")
-                                        loader.save_module_source(r.content, class_name)
-                                        restored_classes.add(class_name)
-                                        fetched += 1
-                                    except Exception as e:
-                                        skipped += 1
-                                        logger.warning(
-                                            "restore: failed to fetch %s from %s: %s",
-                                            mod,
-                                            url,
-                                            e,
-                                        )
-                                logger.info(
-                                    "restore: fetched %d modules by url, %d failed",
-                                    fetched,
-                                    skipped,
-                                )
+                            await self._restore_modules(modzip)
         except Exception:
             logger.exception("Restore failed")
             await utils.answer(status_message, self.strings["reply_to_file"])
