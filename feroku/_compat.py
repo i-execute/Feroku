@@ -28,6 +28,12 @@ def install_inline_type_compat(namespace: dict, markup) -> None:
     namespace["HerokuReplyMarkup"] = markup
 
 
+def install_inline_token_compat(manager, token: str) -> None:
+    manager._token = token
+    if getattr(manager, "bot", None) is not None:
+        manager.bot.token = token
+
+
 def install_public_type_compat(namespace: dict, markup) -> None:
     namespace["HerokuReplyMarkup"] = markup
     namespace["__all__"].append("HerokuReplyMarkup")

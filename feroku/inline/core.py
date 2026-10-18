@@ -35,6 +35,7 @@ from telethon.tl.types import (
     UpdateMessagePollVote,
 )
 from .. import main, utils
+from .._compat import install_inline_token_compat
 from ..database import Database
 from ._strings import _ServiceStrings
 from ..tl_cache import CustomTelegramClient
@@ -254,6 +255,7 @@ class InlineManager(
             await self._bot_client.disconnect()
             return False
         self.bot = TelethonBot(self._bot_client)
+        install_inline_token_compat(self, token)
         self._bot_client._tg_id = bot_me.id
         self._bot_client.tg_id = bot_me.id
         self._bot_client.feroku_me = bot_me
