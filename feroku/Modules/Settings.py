@@ -27,7 +27,7 @@ class Settings(loader.Module):
         "aliases_removed": "<b>Removed {count} aliases:</b>\n<blockquote expandable>{aliases}</blockquote>",
         "aliases_cleared": "<b>All aliases removed</b>.",
         "aliases_list": "<b>Current aliases: {count}</b>\n<blockquote expandable>{aliases}</blockquote>",
-        "aliases_list_line": "{emoji} <code>{prefix}{alias}</code> - <code>{prefix}{command}</code>",
+        "aliases_list_line": "{emoji} <code>{prefix}{alias}</code> = <code>{prefix}{command}</code>",
         "aliases_empty": "<b>No aliases configured</b>",
         "no_alias": "<b>Alias</b> <code>{}</code> <b>does not exist</b>",
         "_cmd_doc_alias": "Show all current aliases",
