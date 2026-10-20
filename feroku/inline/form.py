@@ -414,7 +414,8 @@ class Form(InlineUnit):
                                 id=utils.rand(20),
                             )
                         ],
-                        cache_time=60,
+                        cache_time=0,
+                        is_personal=True,
                     )
                     return
 
