@@ -6,6 +6,7 @@
 import contextlib
 import logging
 import os
+import threading
 import time
 from datetime import timedelta
 
@@ -144,14 +145,46 @@ def get_swap_usage() -> dict:
     except Exception:
         return {"error": "Failed to get swap usage"}
 
+_CPU_TIMES_LOCK = threading.Lock()
+_CPU_TIMES_PREVIOUS = None
+
+
 def get_cpu_usage():
     import psutil
 
+    global _CPU_TIMES_PREVIOUS
+
     try:
-        cpu_percent = psutil.cpu_percent(interval=None)
-        if cpu_percent == 0.0:
-            psutil.cpu_percent(interval=None)
-            cpu_percent = psutil.cpu_percent(interval=None)
+        with _CPU_TIMES_LOCK:
+            cpu_times = psutil.cpu_times()
+            counters = tuple(
+                getattr(cpu_times, name, 0.0)
+                for name in (
+                    "user",
+                    "nice",
+                    "system",
+                    "idle",
+                    "iowait",
+                    "irq",
+                    "softirq",
+                    "steal",
+                )
+            )
+            total = sum(counters)
+            idle = getattr(cpu_times, "idle", 0.0) + getattr(cpu_times, "iowait", 0.0)
+            current = (total, idle)
+            previous = _CPU_TIMES_PREVIOUS
+            _CPU_TIMES_PREVIOUS = current
+
+        if previous is None:
+            return "0.00"
+
+        total_delta = total - previous[0]
+        idle_delta = idle - previous[1]
+        if total_delta <= 0:
+            return "0.00"
+
+        cpu_percent = max(0.0, min(100.0, (total_delta - idle_delta) * 100 / total_delta))
         return f"{cpu_percent:.2f}"
     except Exception:
         return "0.00"
