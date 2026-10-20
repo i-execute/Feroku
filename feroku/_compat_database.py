@@ -48,6 +48,63 @@ def migrate_module_origin_storage(value):
     return result
 
 
+def normalize_module_aliases(value):
+    if not isinstance(value, dict):
+        return {}
+    aliases = {}
+    for alias, command in value.items():
+        if not isinstance(alias, str) or not isinstance(command, str):
+            continue
+        alias = alias.strip().lower()
+        command = command.strip()
+        if alias and command:
+            aliases[alias] = command
+    return aliases
+
+
+def migrate_module_alias_storage(value):
+    if not isinstance(value, dict):
+        return value
+    result = dict(value)
+    aliases = {}
+    owners = [
+        owner
+        for owner in result
+        if isinstance(owner, str)
+        and owner.casefold()
+        in {"coremod", "feroku.coremod", "settings", "feroku.settings"}
+    ]
+    owners.sort(key=lambda owner: owner == "Settings")
+    has_aliases = False
+    current_aliases = None
+    for owner in owners:
+        section = result.get(owner)
+        if not isinstance(section, dict) or "aliases" not in section:
+            continue
+        has_aliases = True
+        normalized = normalize_module_aliases(section.get("aliases"))
+        if owner == "Settings":
+            current_aliases = normalized
+        else:
+            aliases.update(normalized)
+        if owner != "Settings":
+            section = dict(section)
+            section.pop("aliases", None)
+            if section:
+                result[owner] = section
+            else:
+                result.pop(owner, None)
+    if has_aliases:
+        if current_aliases is not None:
+            aliases = aliases if current_aliases else {}
+            aliases.update(current_aliases)
+        settings = result.get("Settings")
+        settings = dict(settings) if isinstance(settings, dict) else {}
+        settings["aliases"] = aliases
+        result["Settings"] = settings
+    return result
+
+
 def migrate_database_items(value):
     if not isinstance(value, dict):
         return value
@@ -73,7 +130,7 @@ def migrate_database_items(value):
                 cache.setdefault("feroku-userbot", cache.pop("heroku-userbot"))
             forums["forums_cache"] = cache
         result["feroku.forums"] = forums
-    return migrate_module_origin_storage(result)
+    return migrate_module_alias_storage(migrate_module_origin_storage(result))
 
 
 def prepare_backup_database(value):

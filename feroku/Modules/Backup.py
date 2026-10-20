@@ -67,7 +67,7 @@ class Backup(loader.Module):
     def _build_archive(self) -> io.BytesIO:
         database_file = io.BytesIO(
             orjson.dumps(
-                _without_inline_bot_token(dict(self._db)),
+                prepare_backup_database(_without_inline_bot_token(dict(self._db))),
                 option=orjson.OPT_INDENT_2 | orjson.OPT_NON_STR_KEYS,
             )
         )
