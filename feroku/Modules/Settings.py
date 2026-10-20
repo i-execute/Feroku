@@ -26,6 +26,7 @@ class Settings(loader.Module):
         "alias_removed": "<b>Alias</b> <code>{}</code> <b>removed</b>.",
         "aliases_removed": "<b>Removed {count} aliases:</b>\n<blockquote expandable>{aliases}</blockquote>",
         "aliases_cleared": "<b>All aliases removed</b>.",
+        "aliases_save_failed": "<b>Aliases could not be saved to the database.</b>",
         "aliases_list": "<b>Current aliases: {count}</b>\n<blockquote expandable>{aliases}</blockquote>",
         "aliases_list_line": "{emoji} <code>{prefix}{alias}</code> = <code>{prefix}{command}</code>",
         "aliases_empty": "<b>No aliases configured</b>",
@@ -249,7 +250,9 @@ class Settings(loader.Module):
                 added_lines.append((added_aliases, target))
 
         if added_lines:
-            self.set("aliases", stored_aliases)
+            if not self.set("aliases", stored_aliases):
+                await utils.answer(message, self.strings["aliases_save_failed"])
+                return
 
         if len(added_lines) == 1 and len(added_lines[0][0]) == 1 and not skipped_lines:
             await utils.answer(
@@ -291,7 +294,9 @@ class Settings(loader.Module):
 
         if args_raw.strip() in {"-c", "--clear"}:
             self.allmodules.aliases.clear()
-            self.set("aliases", {})
+            if not self.set("aliases", {}):
+                await utils.answer(message, self.strings["aliases_save_failed"])
+                return
             await utils.answer(message, self.strings["aliases_cleared"])
             return
 
@@ -321,7 +326,9 @@ class Settings(loader.Module):
             removed_aliases.append(alias)
 
         if removed_aliases:
-            self.set("aliases", current)
+            if not self.set("aliases", current):
+                await utils.answer(message, self.strings["aliases_save_failed"])
+                return
 
         if len(removed_aliases) == 1 and not missed_aliases:
             await utils.answer(

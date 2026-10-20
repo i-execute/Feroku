@@ -114,8 +114,6 @@ class Installer(loader.Module):
         while not (settings := self.lookup("settings")):
             await asyncio.sleep(0.5)
 
-        self.allmodules.add_aliases(settings.get("aliases", {}))
-
         main.feroku.ready.set()
 
         asyncio.ensure_future(self._update_modules())
@@ -1414,6 +1412,10 @@ class Installer(loader.Module):
             self._secure_boot = True
         else:
             await self._load_stored_modules()
+
+        settings = self.lookup("settings")
+        if settings:
+            self.allmodules.add_aliases(settings.get("aliases", {}))
 
         self.fully_loaded = True
 

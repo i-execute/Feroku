@@ -263,7 +263,7 @@ class Module:
         return self._db.get(self.__class__.__name__, key, default)
 
     def set(self, key: str, value: JSONSerializable) -> bool:
-        self._db.set(self.__class__.__name__, key, value)
+        return self._db.set(self.__class__.__name__, key, value)
 
     def pointer(
         self,

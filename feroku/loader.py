@@ -1387,9 +1387,6 @@ class Modules:
                     purpose,
                 )
                 del self.commands[name]
-                for alias, _command in self.aliases.copy().items():
-                    if _command == name:
-                        del self.aliases[alias]
 
     def unregister_watchers(self, instance: Module, purpose: str):
         for _watcher in self.watchers.copy():
