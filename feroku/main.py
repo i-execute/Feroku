@@ -696,29 +696,53 @@ class Feroku:
                 message_thread_id = await handler.get_logs_topic_id()
                 log_chat_id = handler.mod.logchat
 
-                await client.feroku_inline.bot.send_photo(
-                    log_chat_id,
-                    utils.get_asset_path("Feroku.PNG"),
-                    caption=(
-                        "{} <b>{} started!</b>\n\n <b>GitHub commit SHA: <a"
-                        ' href="https://github.com/i-execute/Feroku/commit/{}">{}</a></b>\n'
-                        " <b>Update status: {}</b>\n <b>Prefix:</b> <code>{}</code>"
-                    ).format(
-                        (
-                            utils.get_platform_emoji()
-                            if client.feroku_me.premium is True
-                            else " Feroku"
-                        ),
-                        ".".join(list(map(str, list(__version__)))),
-                        build,
-                        build[:7],
-                        upd,
-                        "." if pref is None else pref,
+                bot = client.feroku_inline.bot.client
+                text = (
+                    "<blockquote>"
+                    "{} <b>{} started!</b>\n"
+                    "<b>GitHub commit SHA: <a"
+                    ' href="https://github.com/i-execute/Feroku/commit/{}">{}</a></b>\n'
+                    "<b>Update status: {}</b>\n"
+                    "<b>Prefix:</b> <code>{}</code>"
+                    "</blockquote>"
+                ).format(
+                    (
+                        utils.get_platform_emoji()
+                        if client.feroku_me.premium is True
+                        else " Feroku"
                     ),
-                    message_thread_id=message_thread_id,
+                    ".".join(list(map(str, list(__version__)))),
+                    build,
+                    build[:7],
+                    upd,
+                    "." if pref is None else pref,
                 )
+                msg_text, entities = await bot._parse_message_text(text, "html")
+                msg = await bot.send_message(
+                    log_chat_id,
+                    msg_text,
+                    formatting_entities=entities,
+                    reply_to=message_thread_id,
+                    link_preview=False,
+                )
+                peer = await bot.get_input_entity(log_chat_id)
+                current = await bot.get_messages(log_chat_id, ids=msg.id)
+                await bot(EditMessageRequest(
+                    peer=peer,
+                    id=msg.id,
+                    message=msg_text,
+                    media=InputMediaWebPage(
+                        url=FEROKU_IMAGE_URL,
+                        optional=True,
+                        force_large_media=True,
+                    ),
+                    invert_media=True,
+                    reply_markup=current.reply_markup if current else None,
+                    entities=entities,
+                    no_webpage=False,
+                ))
             except Exception as badge_error:
-                logging.debug(f"Failed to send badge photo: {badge_error}")
+                logging.debug("Failed to send badge photo: %s", badge_error)
             logging.debug(
                 "· Started for %s · Prefix: «%s» ·",
                 client.tg_id,
