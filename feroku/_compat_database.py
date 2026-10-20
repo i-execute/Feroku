@@ -1,7 +1,6 @@
 # CopyLeft 2026 github.com/i-execute // i_execute.t.me
 # Licensed under AGPLv3.
 
-
 def normalize_module_origins(value):
     if not isinstance(value, dict):
         return {}
