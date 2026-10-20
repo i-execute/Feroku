@@ -488,9 +488,18 @@ class Installer(loader.Module):
                     origin=module["url"],
                     save_fs=True,
                 ):
+                    logger.error(
+                        "dlmall: load_module returned False for %s (%s)",
+                        module["name"],
+                        module["url"],
+                    )
                     failed.append(module["name"])
             except Exception as error:
-                logger.warning("dlmall: failed %s: %s", module["url"], error)
+                logger.exception(
+                    "dlmall: failed %s (%s)",
+                    module["name"],
+                    module["url"],
+                )
                 failed.append(module["name"])
 
         installed = len(modules) - len(failed)
