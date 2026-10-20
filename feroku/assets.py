@@ -1,3 +1,6 @@
+# CopyLeft 2026 github.com/i-execute // i_execute.t.me
+# Licensed under AGPLv3.
+
 from telethon.tl import types
 
 FEROKU_IMAGE_URL = "https://raw.githubusercontent.com/i-execute/Feroku/main/Storage/Feroku.PNG"
