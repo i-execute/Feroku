@@ -31,7 +31,7 @@ class Help(loader.Module):
         "show_preview_in_help": "Show # meta banner in help preview [module]",
         "core_notice": "Core commands",
         "developer": "<b>Developer:</b> {}",
-        "not_exact": "<i>An exact command match was not found.</i>",
+        "not_exact": "\n<blockquote>An exact command match was not found.</blockquote>",
         "partial_load": "<i>Modules are still loading.</i>",
     }
 
@@ -243,7 +243,7 @@ class Help(loader.Module):
                 else ""
             )
             + (self.strings["developer"].format(dev_text) if dev_text else "")
-            + (f"\n\n{self.strings['not_exact']}" if not exact else "")
+            + (self.strings["not_exact"] if not exact else "")
             + (
                 f"\n{self.strings['core_notice']}"
                 if module.__origin__.startswith("<core")
