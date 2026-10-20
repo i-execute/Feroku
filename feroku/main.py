@@ -35,8 +35,11 @@ from telethon.network.connection import (
     ConnectionTcpFull,
 )
 from telethon.sessions import SQLiteSession
+from telethon.tl.functions.messages import EditMessageRequest
+from telethon.tl.types import InputMediaWebPage
 
 from . import database, loader, utils, version
+from .assets import FEROKU_IMAGE_URL
 from ._compat import install_main_compat, migrate_legacy_sessions
 from ._internal import install_task_tracking, restart
 from .dispatcher import CommandDispatcher
