@@ -108,9 +108,17 @@ class Database(dict):
             )
             self.set("feroku.forums", "channel_id", int(content_channel.id))
 
-        for title, description in (
-            ("Logs", " Inline logs and error reports will be stored here"),
-            ("Backups", " Your Feroku backups will be stored here"),
+        for title, description, icon_emoji_id in (
+            (
+                "Logs",
+                " Inline logs and error reports will be stored here",
+                5384573453586179042,
+            ),
+            (
+                "Backups",
+                " Your Feroku backups will be stored here",
+                5386539973082129681,
+            ),
         ):
             if not await utils.get_topic_id(self, title):
                 await utils.asset_forum_topic(
@@ -119,7 +127,7 @@ class Database(dict):
                     content_channel,
                     title,
                     description,
-                    5877307202888273539,
+                    icon_emoji_id,
                     invite_bot=True,
                 )
 

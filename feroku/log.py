@@ -255,7 +255,7 @@ class TelegramLogsHandler(logging.Handler):
                 self._mod.logchat,
                 "Logs",
                 " Inline logs and error reports will be stored here",
-                5877307202888273539,
+                5384573453586179042,
             )
             topic_id = topic.id
         return topic_id
