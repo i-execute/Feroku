@@ -412,6 +412,27 @@ async def asset_forum_topic(
         new_topic = await create_topic()
         forums_cache.setdefault(entity.title, {})[title] = new_topic.id
 
+    if (
+        icon_emoji_id is not None
+        and client.feroku_me.premium
+        and new_topic.icon_emoji_id != icon_emoji_id
+    ):
+        try:
+            await fw_protect()
+            await client(
+                EditForumTopicRequest(
+                    peer=entity,
+                    topic_id=new_topic.id,
+                    icon_emoji_id=icon_emoji_id,
+                )
+            )
+            new_topic.icon_emoji_id = icon_emoji_id
+        except Exception:
+            logger.exception(
+                "Failed to update icon for forum topic '%s'",
+                title,
+            )
+
     if invite_bot:
         await fw_protect()
         if all(

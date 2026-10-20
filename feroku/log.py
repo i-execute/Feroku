@@ -210,6 +210,7 @@ class TelegramLogsHandler(logging.Handler):
         self.capacity = capacity
         self.lvl = logging.NOTSET
         self._send_lock = asyncio.Lock()
+        self._logs_topic_id = None
 
     def install_tg_log(self, mod: Module):
         if getattr(self, "_task", False):
@@ -247,18 +248,19 @@ class TelegramLogsHandler(logging.Handler):
         return self._mod
 
     async def get_logs_topic_id(self) -> int | None:
-        topic_id = await utils.get_topic_id(self._mod.db, "Logs")
-        if not topic_id:
-            topic = await utils.asset_forum_topic(
-                self._mod.client,
-                self._mod.db,
-                self._mod.logchat,
-                "Logs",
-                " Inline logs and error reports will be stored here",
-                5384573453586179042,
-            )
-            topic_id = topic.id
-        return topic_id
+        if self._logs_topic_id is not None:
+            return self._logs_topic_id
+
+        topic = await utils.asset_forum_topic(
+            self._mod.client,
+            self._mod.db,
+            self._mod.logchat,
+            "Logs",
+            " Inline logs and error reports will be stored here",
+            5384573453586179042,
+        )
+        self._logs_topic_id = topic.id
+        return self._logs_topic_id
 
     async def sender(self):
         async with self._send_lock:

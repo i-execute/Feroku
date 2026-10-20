@@ -120,16 +120,15 @@ class Database(dict):
                 5386539973082129681,
             ),
         ):
-            if not await utils.get_topic_id(self, title):
-                await utils.asset_forum_topic(
-                    self._client,
-                    self,
-                    content_channel,
-                    title,
-                    description,
-                    icon_emoji_id,
-                    invite_bot=True,
-                )
+            await utils.asset_forum_topic(
+                self._client,
+                self,
+                content_channel,
+                title,
+                description,
+                icon_emoji_id,
+                invite_bot=True,
+            )
 
         return content_channel
 
