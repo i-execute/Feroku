@@ -1414,13 +1414,6 @@ class Installer(loader.Module):
             self._secure_boot = True
         else:
             await self._load_stored_modules()
-            aliases = {
-                alias: cmd
-                for alias, cmd in self.lookup("settings").get("aliases", {}).items()
-                if self.allmodules.add_alias(alias, *cmd.split(maxsplit=1))
-            }
-
-            self.lookup("settings").set("aliases", aliases)
 
         self.fully_loaded = True
 
