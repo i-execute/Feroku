@@ -219,6 +219,7 @@ class Installer(loader.Module):
             url,
             timeout=30,
             allow_redirects=True,
+            headers={"Cache-Control": "no-cache", "Pragma": "no-cache"},
         )
         response.raise_for_status()
         if not isinstance(response.text, str):
@@ -469,7 +470,7 @@ class Installer(loader.Module):
 
     async def _inline__install_all(self, call: InlineCall, repo: str):
         try:
-            modules = await self._get_repo_modules(repo)
+            modules = await self._get_repo_modules(repo, force=True)
         except Exception as error:
             logger.warning("Failed to fetch full.txt from %s: %s", repo, error)
             await call.edit(self.strings["no_module"])
