@@ -155,6 +155,26 @@ class InlineManager(
     def _web_document(url: str | None, **kwargs):
         return web_document(url, **kwargs)
 
+    @staticmethod
+    def _select_inline_bot_username(bot_me) -> str | None:
+        direct = getattr(bot_me, "username", None)
+        usernames = []
+        if isinstance(direct, str) and direct:
+            usernames.append(direct)
+        for item in getattr(bot_me, "usernames", None) or []:
+            username = getattr(item, "username", None)
+            if (
+                isinstance(username, str)
+                and username
+                and getattr(item, "active", True)
+                and username.lower() not in {value.lower() for value in usernames}
+            ):
+                usernames.append(username)
+        return next(
+            (username for username in usernames if username.lower().endswith("bot")),
+            usernames[0] if usernames else None,
+        )
+
     def _register_bot_handler(
         self,
         handler: typing.Callable,
@@ -250,8 +270,13 @@ class InlineManager(
             except sqlite3.OperationalError:
                 logger.critical("Bot session database is locked", exc_info=True)
                 return False
+        inline_username = self._select_inline_bot_username(bot_me)
+        if not inline_username:
+            logger.critical("Inline bot has no active username")
+            await self._bot_client.disconnect()
+            return False
         if getattr(bot_me, "bot_inline_placeholder", None) is None:
-            logger.critical("Inline mode is disabled for @%s", bot_me.username)
+            logger.critical("Inline mode is disabled for @%s", inline_username)
             await self._bot_client.disconnect()
             return False
         self.bot = TelethonBot(self._bot_client)
@@ -259,7 +284,7 @@ class InlineManager(
         self._bot_client._tg_id = bot_me.id
         self._bot_client.tg_id = bot_me.id
         self._bot_client.feroku_me = bot_me
-        self.bot_username = bot_me.username
+        self.bot_username = inline_username
         self.bot_id = bot_me.id
         self._register_builtin_handlers()
         self._cleaner_task = asyncio.ensure_future(self._cleaner())

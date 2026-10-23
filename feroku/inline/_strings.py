@@ -24,7 +24,7 @@ class _ServiceStrings:
         "command": "Command «{}»",
         "button403": "You are not allowed to press this button!",
         "keep_id": "Do not remove ID! {}",
-        "no_query_results": "<b>Failed to create form</b>\n\nCheck that the bot token is valid and inline mode is enabled in @BotFather, then restart the service.",
+        "no_query_results": "<b>Failed to create form</b>\n<blockquote>Check that the bot token is valid and inline mode is enabled in @BotFather, then restart the service.</blockquote>",
     }
 
     def getkey(self, key: str, **kwargs) -> str:
