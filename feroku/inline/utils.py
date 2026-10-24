@@ -187,6 +187,9 @@ class Utils(InlineUnit):
                                 "switch_inline_query"
                             ]
 
+                        case _ if button.get("disabled"):
+                            btn_kwargs["disabled"] = True
+
                         case _:
                             logger.warning(
                                 (
@@ -728,6 +731,7 @@ class Utils(InlineUnit):
                 or "web_app" in button
                 or "switch_inline_query_current_chat" in button
                 or "switch_inline_query" in button
+                or button.get("disabled")
                 for button in row
             )
             for row in buttons
@@ -743,7 +747,8 @@ class Utils(InlineUnit):
                 "  - `copy`\n"
                 "  - `web_app`\n"
                 "  - `switch_inline_query_current_chat`\n"
-                "  - `switch_inline_query`"
+                "  - `switch_inline_query`\n"
+                "  - `disabled`"
             )
             return None
 

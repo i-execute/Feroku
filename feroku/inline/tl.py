@@ -1,6 +1,8 @@
 # CopyLeft 2026 github.com/i-execute // i_execute.t.me
 # Licensed under AGPLv3.
 
+# (c) Dan Gazizullin, 2021-2023. This file is part of the Hikka Userbot: github.com/hikariatama/Hikka
+
 import io
 import typing
 
@@ -550,7 +552,15 @@ def make_button(
     switch_inline_query: str | None = None,
     web_app: str | dict | None = None,
     copy_text: str | None = None,
+    disabled: bool = False,
 ):
+    if disabled:
+        return types.KeyboardInlineButton(
+            text,
+            types.InlineButtonTypeDisabled(),
+            style=Button._get_style(style, icon),
+        )
+
     if url is not None:
         return Button.url(text, url, style=style, icon=icon)
 
