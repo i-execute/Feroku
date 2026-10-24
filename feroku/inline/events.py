@@ -293,41 +293,50 @@ class Events(InlineUnit):
                     return result
 
         if call_data in self._custom_map:
+            entry = self._custom_map[call_data]
+            unit_id = entry.get("unit_id")
+            unit = self._units.get(unit_id, {}) if unit_id is not None else {}
+            if unit_id is not None and not unit:
+                self._custom_map.pop(call_data, None)
+                return
+
+            force_me = entry.get("force_me", False) or unit.get("force_me", False)
+            perms_map = entry.get("perms_map") or unit.get("perms_map")
             match True:
                 case _ if (
-                    self._custom_map[call_data].get("disable_security", False)
-                    or (
-                        self._custom_map[call_data].get("force_me", False)
-                        and user_id == self._me
-                    )
-                    or not self._custom_map[call_data].get("force_me", False)
+                    entry.get("disable_security", False)
+                    or unit.get("disable_security", False)
+                    or (force_me and user_id == self._me)
+                    or not force_me
                     and (
                         await self.check_inline_security(
-                            func=self._custom_map[call_data].get(
-                                "perms_map",
-                                lambda: self._client.dispatcher.security._default,
+                            func=(
+                                perms_map
+                                or (lambda: self._client.dispatcher.security._default)
                             )(),
                             user=user_id,
                         )
-                        if "message" in self._custom_map[call_data]
+                        if "message" in entry or "message" in unit
                         else False
                     )
                 ):
                     pass
-                case (
-                    _
-                ) if user_id not in self._client.dispatcher.security._owner and user_id not in self._custom_map[
-                    call_data
-                ].get(
-                    "always_allow", []
+                case _ if user_id not in (
+                    list(self._client.dispatcher.security._owner)
+                    + list(entry.get("always_allow") or [])
+                    + list(unit.get("always_allow") or [])
                 ):
                     await call.answer(self.translator.getkey("inline.button403"))
                     return
 
-            await self._custom_map[call_data]["handler"](
-                (InlineCall if call.via_inline else BotInlineCall)(call, self, None),
-                *self._custom_map[call_data].get("args", []),
-                **self._custom_map[call_data].get("kwargs", {}),
+            await entry["handler"](
+                (InlineCall if call.via_inline else BotInlineCall)(
+                    call,
+                    self,
+                    unit_id,
+                ),
+                *entry.get("args", []),
+                **entry.get("kwargs", {}),
             )
             return
 
