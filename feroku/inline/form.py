@@ -382,7 +382,7 @@ class Form(InlineUnit):
             return
 
         for unit in self._units.copy().values():
-            for button in utils.array_sum(unit.get("buttons", [])):
+            for button in self._input_buttons(unit):
                 if (
                     "_switch_query" in button
                     and "input" in button

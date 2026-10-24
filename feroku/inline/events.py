@@ -20,6 +20,22 @@ if typing.TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 class Events(InlineUnit):
+    def _input_buttons(self: "InlineManager", unit: dict) -> list[dict]:
+        result = []
+        seen = set()
+        for rows in (unit.get("buttons", []), unit.get("_low_buttons", [])):
+            if isinstance(rows, dict):
+                rows = [[rows]]
+            elif isinstance(rows, list) and any(isinstance(item, dict) for item in rows):
+                rows = [rows]
+            for row in rows if isinstance(rows, list) else []:
+                for button in row if isinstance(row, list) else []:
+                    if not isinstance(button, dict) or id(button) in seen:
+                        continue
+                    seen.add(id(button))
+                    result.append(button)
+        return result
+
     async def _message_handler(self: "InlineManager", message):
         if not message.is_private:
             return
@@ -354,7 +370,7 @@ class Events(InlineUnit):
                 unit["future"].set()
                 return
         for unit_id, unit in self._units.copy().items():
-            for button in utils.array_sum(unit.get("buttons", [])):
+            for button in self._input_buttons(unit):
                 if not (
                     "_switch_query" in button
                     and "input" in button
