@@ -45,6 +45,7 @@ from .form import Form
 from .gallery import Gallery
 from .list import List
 from .query_gallery import QueryGallery
+from .screens import Screens
 from .tl import TelethonBot, web_document
 from .utils import Utils
 
@@ -104,6 +105,7 @@ _BOT_UPDATE_EVENTS: dict[BotUpdateType, typing.Callable[[], object]] = {
 }
 
 class InlineManager(
+    Screens,
     Utils,
     Events,
     Form,
@@ -360,6 +362,8 @@ class InlineManager(
         self,
         unit_id: str,
         message: Message,
+        top_msg_id: Message | int | None = None,
+        *,
         reply_to: Message | int | None = None,
     ) -> Message:
         event = asyncio.Event()
@@ -410,7 +414,11 @@ class InlineManager(
                 reply_to
                 if reply_to is not None
                 else (
-                    message.reply_to_msg_id if isinstance(message, Message) else None
+                    top_msg_id
+                    if top_msg_id is not None
+                    else (
+                        message.reply_to_msg_id if isinstance(message, Message) else None
+                    )
                 )
             ),
         )

@@ -429,8 +429,8 @@ class Form(InlineUnit):
         form_text = "\u2063" if form.get("premium_emoji_pre_edit") else form.get("text")
         try:
             match True:
-                case _ if "rich_message" in form:
-                    rich_value = form["rich_message"]
+                case _ if "rich_message" in form or "rich_html" in form:
+                    rich_value = form.get("rich_message", form.get("rich_html"))
                     if not isinstance(rich_value, str):
                         raise TypeError("Inline bot Rich forms require HTML text")
                     await inline_query.answer(

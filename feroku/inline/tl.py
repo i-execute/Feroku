@@ -1,12 +1,11 @@
 # CopyLeft 2026 github.com/i-execute // i_execute.t.me
 # Licensed under AGPLv3.
 
-# (c) Dan Gazizullin, 2021-2023. This file is part of the Hikka Userbot: github.com/hikariatama/Hikka
-
 import io
 import typing
 
 from telethon import Button
+from telethon.errors.rpcerrorlist import FloodWaitError
 from telethon.extensions import html as html_parser
 from telethon import utils as tl_utils
 from telethon.tl import types
@@ -25,11 +24,13 @@ from telethon.tl.types import (
 from telethon.tl import TLObject
 
 from ..assets import FEROKU_IMAGE_URL
+from .errors import TelegramRetryAfter
 
 
 class TelethonBot:
     def __init__(self, client):
         self.client = client
+        self._client = client
 
     async def __call__(self, value):
         if isinstance(value, TLObject):
@@ -445,7 +446,8 @@ class TelethonBot:
     async def edit_message_text(
         self,
         *,
-        text: str,
+        text: str | None = None,
+        rich_message: typing.Any = None,
         inline_message_id: typing.Any = None,
         chat_id: typing.Any = None,
         message_id: typing.Any = None,
@@ -453,6 +455,23 @@ class TelethonBot:
         disable_web_page_preview: bool = True,
         **kwargs: typing.Any,
     ) -> typing.Any:
+        if rich_message is not None:
+            try:
+                return await self.edit_rich_message(
+                    rich_message=rich_message,
+                    inline_message_id=inline_message_id,
+                    chat_id=chat_id,
+                    message_id=message_id,
+                    reply_markup=reply_markup,
+                )
+            except FloodWaitError as error:
+                raise TelegramRetryAfter(
+                    method="editMessageText",
+                    message=str(error),
+                    retry_after=error.seconds,
+                ) from error
+        if text is None:
+            raise ValueError("text or rich_message is required")
         markup = self._build_reply_markup(reply_markup)
 
         if inline_message_id is not None:
