@@ -21,7 +21,6 @@ from telethon.tl.functions.users import GetFullUserRequest
 from telethon.tl.types import (
     ChannelFull,
     InputReplyToMessage,
-    InputRichMessage,
     InputRichMessageHTML,
     InputRichMessageMarkdown,
     InputSendMessageRichMessageDraftAction,
@@ -96,64 +95,12 @@ class CustomTelegramClient(TelegramClient):
         self.feroku_inline: "InlineManager"
 
     @staticmethod
-    def _rich_output_block_to_input(block):
-        from telethon.tl.types import (
-            InputGeoPoint,
-            InputGeoPointEmpty,
-            InputPageBlockMap,
-        )
-
-        block = copy.deepcopy(block)
-        if type(block).__name__ == "PageBlockMap":
-            geo = block.geo
-            if type(geo).__name__ == "GeoPoint":
-                geo = InputGeoPoint(
-                    lat=geo.lat,
-                    long=geo.long,
-                    accuracy_radius=geo.accuracy_radius,
-                )
-            else:
-                geo = InputGeoPointEmpty()
-            return InputPageBlockMap(
-                geo=geo,
-                zoom=block.zoom,
-                w=block.w,
-                h=block.h,
-                caption=block.caption,
-            )
-
-        for field in ("blocks", "items"):
-            value = getattr(block, field, None)
-            if isinstance(value, list):
-                setattr(
-                    block,
-                    field,
-                    [CustomTelegramClient._rich_output_block_to_input(item) for item in value],
-                )
-        return block
-
-    @staticmethod
     def _rich_output_to_input(rich_message):
         if type(rich_message).__name__ != "RichMessage":
             return rich_message
+        from .utils.rich import to_input
 
-        photos = [
-            tl_utils.get_input_photo(photo)
-            for photo in getattr(rich_message, "photos", [])
-        ]
-        documents = [
-            tl_utils.get_input_document(document)
-            for document in getattr(rich_message, "documents", [])
-        ]
-        return InputRichMessage(
-            blocks=[
-                CustomTelegramClient._rich_output_block_to_input(block)
-                for block in getattr(rich_message, "blocks", [])
-            ],
-            rtl=getattr(rich_message, "rtl", None),
-            photos=photos,
-            documents=documents,
-        )
+        return to_input(rich_message)
 
     @staticmethod
     def _rich_input(

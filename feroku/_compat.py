@@ -61,6 +61,27 @@ def install_rich_compat(module) -> None:
     ):
         sys.modules[name] = module
 
+    rich_html = importlib.import_module("feroku.utils.rich_html")
+    telethon_html = importlib.import_module("telethon.extensions.html")
+    telethon_html.__dict__.update(
+        {
+            name: value
+            for name, value in vars(rich_html).items()
+            if not name.startswith("__")
+        }
+    )
+    for package_name in ("telethon.extensions", "herokutl.extensions", "hikkatl.extensions", "ataraxiatl.extensions"):
+        package = sys.modules.get(package_name)
+        if package is not None:
+            package.rich = module
+            package.html = telethon_html if package_name == "telethon.extensions" else rich_html
+    for name in (
+        "herokutl.extensions.html",
+        "hikkatl.extensions.html",
+        "ataraxiatl.extensions.html",
+    ):
+        sys.modules[name] = rich_html
+
 
 def migrate_legacy_sessions(base_dir: str, sessions_dir: str) -> None:
     with os.scandir(base_dir) as entries:
@@ -126,9 +147,10 @@ async def _edit_message(
     from telethon import functions, utils
     from telethon.tl import types as tl_types
 
-    if rich is not None:
-        text = _rich_html(rich)
-        parse_mode = "html"
+    rich_input = _to_input_rich(rich) if rich is not None else None
+    if rich is not None and text is None and not isinstance(message, str):
+        text = _rich_fallback_text(rich)
+        parse_mode = None
 
     if isinstance(
         entity,
@@ -162,6 +184,7 @@ async def _edit_message(
             entities=formatting_entities,
             media=media,
             reply_markup=self.build_reply_markup(buttons),
+            rich_message=rich_input,
         )
         if self.session.dc_id != entity.dc_id:
             sender = await self._borrow_exported_sender(entity.dc_id)
@@ -181,6 +204,7 @@ async def _edit_message(
         media=media,
         reply_markup=self.build_reply_markup(buttons),
         schedule_date=schedule,
+        rich_message=rich_input,
     )
     return self._get_response_message(request, await self(request), entity)
 
@@ -201,12 +225,33 @@ _ATARAXIA_SEND_MESSAGE_KWARGS = (
 _ATARAXIA_SEND_FILE_KWARGS = _ATARAXIA_SEND_MESSAGE_KWARGS + ("workers",)
 
 
-def _rich_html(value):
-    if isinstance(value, str):
+def _to_input_rich(value):
+    if value is None or type(value).__name__.startswith("InputRichMessage"):
         return value
-    from .utils.rich import rich_message_to_html
+    from telethon.tl.types import InputRichMessageMarkdown
 
-    return rich_message_to_html(value)
+    if isinstance(value, str):
+        return InputRichMessageMarkdown(markdown=value)
+    from .utils.rich import to_input
+
+    return to_input(value)
+
+
+def _rich_fallback_text(value):
+    from telethon.extensions import html as html_parser
+
+    if isinstance(value, str):
+        return value or " "
+    html = getattr(value, "html", None)
+    if html:
+        text, _ = html_parser.parse(html)
+        return text or " "
+    markdown = getattr(value, "markdown", None)
+    if markdown:
+        return str(markdown)
+    from .utils.rich import to_text
+
+    return to_text(value) or " "
 
 
 def _drop_kwargs(kwargs: dict, names: tuple[str, ...]) -> None:
@@ -234,15 +279,29 @@ async def _apply_invert_media(client, result, link_preview=True):
 
 
 async def _send_message(self, *args, invert_media=False, rich=None, **kwargs):
+    if rich is not None and hasattr(self, "send_rich_message"):
+        from telethon import utils as telethon_utils
+
+        if kwargs.get("file") is not None:
+            raise ValueError("rich messages cannot be combined with a file")
+        entity = args[0] if args else kwargs.get("entity")
+        return await self.send_rich_message(
+            entity,
+            markdown=rich if isinstance(rich, str) else None,
+            rich_message=None if isinstance(rich, str) else _to_input_rich(rich),
+            reply_to=telethon_utils.get_message_id(kwargs.get("reply_to")),
+            buttons=kwargs.get("buttons"),
+            silent=kwargs.get("silent"),
+        )
     _drop_kwargs(kwargs, _ATARAXIA_SEND_MESSAGE_KWARGS)
     if rich is not None:
-        text = _rich_html(rich)
+        text = _rich_fallback_text(rich)
         args = list(args)
         if len(args) > 1:
             args[1] = text
         else:
             kwargs["message"] = text
-        kwargs["parse_mode"] = "html"
+        kwargs["parse_mode"] = None
     result = await _original_send_message(self, *args, **kwargs)
     if not invert_media:
         return result
